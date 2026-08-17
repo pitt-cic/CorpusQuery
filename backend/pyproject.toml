@@ -1,0 +1,33 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "boto3>=1.40.61",
+    "paper-qa>=6.0.0",
+    "pillow>=12.2.0",
+    "shared",
+    "vectorstore",
+]
+
+[tool.uv.workspace]
+members = [
+    "shared",
+    "vectorstore",
+    "lambdas/api",
+    "lambdas/query",
+]
+
+[dependency-groups]
+dev = [
+    "aws-lambda-powertools>=3.29.0",
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.4.0",
+    "pytest-mock>=3.15.1",
+    "python-dotenv>=1.2.2",
+]
+
+[tool.uv.sources]
+shared = { workspace = true, editable = true }
+vectorstore = { workspace = true, editable = true }

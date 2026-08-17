@@ -1,0 +1,57 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --color-ink: #1a1f36;
+  --color-ink-muted: #4a5068;
+  --color-paper: #faf9f7;
+  --color-paper-warm: #f5f3ef;
+  --color-gold: #c4a35a;
+  --color-gold-soft: #c4a35a1a;
+  --color-border: #e8e6e1;
+  --color-border-focus: #c4a35a;
+  --color-success: #3d7a5f;
+  --color-error: #a63d3d;
+  --color-warning: #b8860b;
+  --color-info: #4a7c9b;
+  --color-surface: #ffffff;
+
+  --font-serif: 'EB Garamond', serif;
+  --font-sans: 'DM Sans', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+
+  --shadow-sm: 0 1px 2px rgba(26, 31, 54, 0.04);
+  --shadow-md: 0 4px 12px rgba(26, 31, 54, 0.06);
+  --shadow-lg: 0 8px 24px rgba(26, 31, 54, 0.08);
+
+  --radius-input: 6px;
+  --radius-card: 8px;
+  --radius-modal: 12px;
+}
+
+@utility scrollbar-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar { display: none; }
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@utility animate-shimmer {
+  animation: shimmer 1.5s infinite;
+  background-size: 200% 100%;
+}
+
+@layer base {
+  body {
+    font-family: var(--font-sans);
+    font-size: 15px;
+    color: var(--color-ink);
+    background: var(--color-paper);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+}

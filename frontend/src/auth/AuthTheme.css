@@ -1,0 +1,60 @@
+/* Amplify Authenticator Theme Overrides */
+/* Matches Digital Twin design system: gold accent, serif headers, paper background */
+
+[data-amplify-authenticator] {
+  --amplify-colors-brand-primary-10: var(--color-gold-soft);
+  --amplify-colors-brand-primary-80: var(--color-gold);
+  --amplify-colors-brand-primary-90: var(--color-gold);
+  --amplify-colors-brand-primary-100: var(--color-gold);
+  --amplify-colors-background-primary: var(--color-paper);
+  --amplify-colors-background-secondary: var(--color-surface);
+  --amplify-colors-border-primary: var(--color-border);
+  --amplify-colors-border-focus: var(--color-border-focus);
+  --amplify-colors-font-primary: var(--color-ink);
+  --amplify-colors-font-secondary: var(--color-ink-muted);
+  --amplify-colors-font-error: var(--color-error);
+
+  --amplify-components-authenticator-router-background-color: var(--color-surface);
+  --amplify-components-authenticator-router-border-color: var(--color-border);
+  --amplify-components-authenticator-router-border-width: 1px;
+  --amplify-components-authenticator-router-border-style: solid;
+  --amplify-components-authenticator-router-box-shadow: var(--shadow-sm);
+
+  --amplify-components-button-primary-background-color: var(--color-ink);
+  --amplify-components-button-primary-color: white;
+  --amplify-components-button-primary-hover-background-color: var(--color-gold);
+  --amplify-components-button-primary-hover-color: var(--color-ink);
+
+  --amplify-components-button-link-color: var(--color-gold);
+  --amplify-components-button-link-hover-color: var(--color-gold);
+  --amplify-components-button-link-hover-background-color: transparent;
+
+  --amplify-components-fieldcontrol-border-color: var(--color-border);
+  --amplify-components-fieldcontrol-focus-border-color: var(--color-border-focus);
+
+  --amplify-radii-small: var(--radius-input);
+  --amplify-radii-medium: var(--radius-card);
+  --amplify-radii-large: var(--radius-modal);
+
+  --amplify-fonts-default-variable: var(--font-sans);
+  --amplify-fonts-default-static: var(--font-sans);
+}
+
+[data-amplify-authenticator] [data-amplify-router] {
+  border-radius: var(--radius-modal);
+  max-width: 400px;
+  padding: 2rem;
+}
+
+.auth-header {
+  margin-bottom: 1.5rem;
+}
+
+/* Full-page centered layout */
+[data-amplify-authenticator] {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-paper);
+}

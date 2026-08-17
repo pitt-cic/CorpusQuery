@@ -1,0 +1,18 @@
+# Claude docs
+docs/**/specs
+docs/**/plans
+docs/*.md
+.mcp.json
+
+# Git worktrees
+.worktrees/
+
+# Integration test environment (contains local paths)
+backend/.env.integration
+
+# Playwright MCP
+.playwright-mcp/
+
+data/
+
+node_modules
