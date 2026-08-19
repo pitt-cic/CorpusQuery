@@ -364,7 +364,9 @@ def get_fetched_documents():
 def sync_documents():
     """Trigger Knowledge Base sync."""
     try:
+        user_id = _get_user_id()
         result = documents_client.start_sync()
+        jobs_repo.create_sync_job(user_id, result["ingestionJobId"])
         return sync_to_response(result)
     except SyncInProgressError as e:
         return (
@@ -432,8 +434,10 @@ def list_sync_jobs():
     params = app.current_event.query_string_parameters or {}
     page_size = int(params.get("pageSize", "5"))
     next_token = params.get("nextToken")
+    user_id = _get_user_id()
 
-    result = documents_client.list_sync_jobs(page_size=page_size, next_token=next_token)
+    allowed_job_ids = set(jobs_repo.list_sync_job_ids(user_id))
+    result = documents_client.list_sync_jobs(page_size=page_size, next_token=next_token, allowed_job_ids=allowed_job_ids)
     return sync_jobs_to_response(result)
 
 

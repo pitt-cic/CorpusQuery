@@ -122,6 +122,28 @@ class JobsRepository:
             result["error"] = item["error"]
         return result
     
+    def create_sync_job(self, user_id: str, bedrock_job_id: str) -> None:
+        """Record a Bedrock sync job triggered by this user."""
+        timestamp = self._now()
+        sk = f"sync#{timestamp}#{bedrock_job_id}"
+        self.table.put_item(Item={
+            "user_id": user_id,
+            "sk": sk,
+            "bedrock_job_id": bedrock_job_id,
+            "created_at": timestamp,
+        })
+
+    def list_sync_job_ids(self, user_id: str) -> list[str]:
+        """Return all Bedrock job IDs triggered by this user."""
+        response = self.table.query(
+            KeyConditionExpression="user_id = :uid AND begins_with(sk, :prefix)",
+            ExpressionAttributeValues={
+                ":uid": user_id,
+                ":prefix": "sync#",
+            },
+        )
+        return [item["bedrock_job_id"] for item in response.get("Items", [])]
+
     def list_jobs(self, user_id: str) -> list[dict]:
         """List all jobs for a session, ordered by creation time."""
         response = self.table.query(

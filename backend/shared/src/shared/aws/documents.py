@@ -251,33 +251,45 @@ class DocumentsClient:
 
         return list(orcids)
 
-    def list_sync_jobs(self, page_size: int, next_token: str | None) -> dict:
-        """List ingestion jobs with pagination, sorted by startedAt descending."""
-        params: dict[str, Any] = {
-            "knowledgeBaseId": self.kb_id,
-            "dataSourceId": self.data_source_id,
-            "maxResults": page_size,
-            "sortBy": {"attribute": "STARTED_AT", "order": "DESCENDING"},
-        }
-        if next_token:
-            params["nextToken"] = next_token
+    def list_sync_jobs(self, page_size: int, next_token: str | None, allowed_job_ids: set[str] | None = None) -> dict:
+        """List ingestion jobs with pagination, sorted by startedAt descending.
 
-        response = self.bedrock_agent.list_ingestion_jobs(**params)
+        If allowed_job_ids is provided, only jobs whose ingestionJobId is in that set are returned.
+        """
+        all_jobs = []
+        bedrock_token = next_token
 
-        jobs = []
-        for summary in response.get("ingestionJobSummaries", []):
-            jobs.append({
-                "ingestionJobId": summary["ingestionJobId"],
-                "status": summary["status"],
-                "startedAt": _serialize_datetime(summary.get("startedAt")),
-                "updatedAt": _serialize_datetime(summary.get("updatedAt")),
-                "statistics": summary.get("statistics", {}),
-                "failureReasons": summary.get("failureReasons", []),
-            })
+        while True:
+            params: dict[str, Any] = {
+                "knowledgeBaseId": self.kb_id,
+                "dataSourceId": self.data_source_id,
+                "maxResults": 50,
+                "sortBy": {"attribute": "STARTED_AT", "order": "DESCENDING"},
+            }
+            if bedrock_token:
+                params["nextToken"] = bedrock_token
+
+            response = self.bedrock_agent.list_ingestion_jobs(**params)
+
+            for summary in response.get("ingestionJobSummaries", []):
+                if allowed_job_ids is not None and summary["ingestionJobId"] not in allowed_job_ids:
+                    continue
+                all_jobs.append({
+                    "ingestionJobId": summary["ingestionJobId"],
+                    "status": summary["status"],
+                    "startedAt": _serialize_datetime(summary.get("startedAt")),
+                    "updatedAt": _serialize_datetime(summary.get("updatedAt")),
+                    "statistics": summary.get("statistics", {}),
+                    "failureReasons": summary.get("failureReasons", []),
+                })
+
+            bedrock_token = response.get("nextToken")
+            if not bedrock_token or len(all_jobs) >= page_size:
+                break
 
         return {
-            "jobs": jobs,
-            "nextToken": response.get("nextToken"),
+            "jobs": all_jobs[:page_size],
+            "nextToken": bedrock_token,
         }
 
     def get_sync_job(self, job_id: str) -> dict | None:
