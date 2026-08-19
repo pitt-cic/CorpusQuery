@@ -140,7 +140,7 @@ class DocumentsClient:
 
 
     def list_documents(
-        self, page_size: int, next_token: str | None
+        self, page_size: int, next_token: str | None, user_id: str | None = None
     ) -> dict:
         """List KB documents (shared), sorted globally by updatedAt descending.
 
@@ -167,6 +167,9 @@ class DocumentsClient:
             for doc in response.get("documentDetails", []):
                 s3_uri = doc["identifier"]["s3"]["uri"]
                 parts = s3_uri.split("/")
+                # s3://bucket/papers/{user_id}/{orcid}/{filename}
+                if user_id and not (len(parts) >= 5 and parts[3] == "papers" and parts[4] == user_id):
+                    continue
                 filename = parts[-1]
                 orcid = parts[-2] if len(parts) >= 7 and orcid_pattern.match(parts[-2]) else None
                 raw_updated = doc.get("updatedAt")
@@ -223,16 +226,17 @@ class DocumentsClient:
         orcid_pattern = re.compile(r'^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$')
         orcids = set()
 
-        # Fetched papers: fetched-papers/{orcid}/
+        # Fetched papers: download-results/{user_id}/{orcid}.json (user-scoped)
         response = self.s3.list_objects_v2(
             Bucket=fetched_bucket,
-            Prefix="fetched-papers/",
-            Delimiter="/",
+            Prefix=f"download-results/{user_id}/",
         )
-        for cp in response.get("CommonPrefixes", []):
-            segment = cp["Prefix"].rstrip("/").split("/")[-1]
-            if orcid_pattern.match(segment):
-                orcids.add(segment)
+        for obj in response.get("Contents", []):
+            filename = obj["Key"].split("/")[-1]
+            if filename.endswith(".json"):
+                segment = filename[:-5]
+                if orcid_pattern.match(segment):
+                    orcids.add(segment)
 
         # Manual uploads with ORCID tag: papers/{user_id}/{orcid}/
         response = self.s3.list_objects_v2(

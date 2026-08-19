@@ -452,8 +452,9 @@ def list_documents():
     params = app.current_event.query_string_parameters or {}
     page_size = int(params.get("pageSize", "100"))
     next_token = params.get("nextToken")
+    user_id = _get_user_id()
 
-    result = documents_client.list_documents(page_size, next_token)
+    result = documents_client.list_documents(page_size, next_token, user_id)
     return documents_to_response(result)
 
 
