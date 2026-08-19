@@ -24,7 +24,7 @@ EOF
 
 STACK_NAME="CorpusQueryStack"
 APP_ID=""
-BRANCH_NAME="fetcher"
+BRANCH_NAME="main"
 PROFILE=""
 REGION=""
 SKIP_INSTALL=0

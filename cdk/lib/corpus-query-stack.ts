@@ -86,7 +86,7 @@ export class CorpusQueryStack extends Stack {
 
 
     const corsOrigins = process.env.ALLOW_LOCALHOST == "true" ? ["http://localhost:5173"]
-    : [`https://fetcher.${amplifyApp.appId}.amplifyapp.com`]
+    : [`https://main.${amplifyApp.appId}.amplifyapp.com`]
 
     const papersBucket = new s3.Bucket(this, "PapersBucket", {
       bucketName: `${APP_NAME}-papers-${this.account}`,

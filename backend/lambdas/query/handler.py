@@ -25,7 +25,7 @@ from vectorstore import BedrockKBVectorStore
 
 from config import DEFAULT_MODEL, DEFAULT_EMBEDDING, DEFAULT_RETRIEVAL, TITLE_MODEL_ID
 from prompts import SYSTEM_PROMPT, SUMMARY_PROMPT, TITLE_PROMPT
-from utils import format_conversation_history
+from utils import format_conversation_history, build_retrieval_query
 
 logger = Logger()
 
@@ -219,6 +219,7 @@ async def _process_question(
     # Fetch prior conversation from this session
     prior_jobs = jobs_repo.list_jobs_by_session(user_id, session_id)
     conversation_history = format_conversation_history(jobs=prior_jobs, current_question=question)
+    retrieval_query = build_retrieval_query(question, prior_jobs)
 
     # Build settings per-request
     query_settings = _build_settings(user_settings, conversation_history, api_keys)
@@ -234,12 +235,13 @@ async def _process_question(
     logger.info("Running paper-qa query", extra={
         "job_id": job_id,
         "question": question,
+        "retrieval_query": retrieval_query,
         "orcid": orcid,
         "vector_index": VECTOR_INDEX,
         "vector_bucket": VECTOR_BUCKET,
         "filtering_by_orcid": orcid is not None
     })
-    session = await docs.aquery(query=question, settings=query_settings)
+    session = await docs.aquery(query=retrieval_query, settings=query_settings)
 
     # Use formatted_answer which includes inline citations like (docname)
     answer = session.formatted_answer if hasattr(session, "formatted_answer") else session.answer

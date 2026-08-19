@@ -48,16 +48,23 @@ class JobsRepository:
 
     def list_jobs_by_session(self, user_id: str, session_id: str) -> list[dict]:
         """List all jobs for a session, ordered by creation time."""
-        response = self.table.query(
-            KeyConditionExpression="user_id = :uid AND begins_with(sk, :prefix)",
-            FilterExpression="session_id = :sid",
-            ExpressionAttributeValues={
+        items = []
+        query_params = {
+            "KeyConditionExpression": "user_id = :uid AND begins_with(sk, :prefix)",
+            "FilterExpression": "session_id = :sid",
+            "ExpressionAttributeValues": {
                 ":uid": user_id,
                 ":prefix": "job#",
                 ":sid": session_id,
             },
-        )
-        items = response.get("Items", [])
+        }
+        while True:
+            response = self.table.query(**query_params)
+            items.extend(response.get("Items", []))
+            last_key = response.get("LastEvaluatedKey")
+            if not last_key:
+                break
+            query_params["ExclusiveStartKey"] = last_key
         return [self._item_to_job(item) for item in items]
 
     def update_job_status(
