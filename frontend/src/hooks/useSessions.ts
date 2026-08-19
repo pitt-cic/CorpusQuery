@@ -1,10 +1,12 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
+import { useCurrentUser } from './useCurrentUser';
 
 const PAGE_SIZE = 20;
 
 export function useSessions() {
   const queryClient = useQueryClient();
+  const { userId } = useCurrentUser();
 
   const {
     data,
@@ -13,10 +15,11 @@ export function useSessions() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ['sessions'],
+    queryKey: ['sessions', userId],
     queryFn: ({ pageParam }) => api.getSessions(PAGE_SIZE, pageParam),
     getNextPageParam: (lastPage) => lastPage.nextToken ?? undefined,
     initialPageParam: undefined as string | undefined,
+    enabled: !!userId,
   });
 
   const sessions = data?.pages.flatMap((page) => page.sessions) ?? [];
@@ -25,14 +28,14 @@ export function useSessions() {
     mutationFn: ({ sessionId, title }: { sessionId: string; title: string }) =>
       api.updateSession(sessionId, { title }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['sessions', userId] });
     },
   });
 
   const deleteSession = useMutation({
     mutationFn: (sessionId: string) => api.deleteSession(sessionId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['sessions', userId] });
     },
   });
 

@@ -1,19 +1,22 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { api } from '@/api/client';
+import { useCurrentUser } from './useCurrentUser';
 
 const COOLDOWN_MS = 60000;
 
 export function useDocuments(pageSize = 20) {
   const queryClient = useQueryClient();
+  const { userId } = useCurrentUser();
   const [nextToken, setNextToken] = useState<string | null>(null);
   const [lastRefreshTime, setLastRefreshTime] = useState<number | null>(null);
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['documents', { pageSize, nextToken }],
+    queryKey: ['documents', userId, { pageSize, nextToken }],
     queryFn: () => api.getDocuments(pageSize, nextToken ?? undefined),
+    enabled: !!userId,
   });
 
   // Cooldown timer
@@ -47,7 +50,7 @@ export function useDocuments(pageSize = 20) {
       return;
     }
     setLastRefreshTime(Date.now());
-    queryClient.invalidateQueries({ queryKey: ['documents'] });
+    queryClient.invalidateQueries({ queryKey: ['documents', userId] });
   }, [lastRefreshTime, queryClient]);
 
   const canRefresh = cooldownRemaining === 0;
