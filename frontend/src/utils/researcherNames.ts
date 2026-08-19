@@ -1,41 +1,51 @@
+let _userId = '';
+
+export function initResearcherStorage(userId: string): void {
+  _userId = userId;
+}
+
+function scopedKey(base: string): string {
+  return _userId ? `${_userId}_${base}` : base;
+}
+
 const STORAGE_PREFIX = 'researcher_';
 const JOB_ORCID_PREFIX = 'fetcher_job_';
 const FETCHED_ORCIDS_KEY = 'fetched_orcids';
 const UPLOADED_PAPERS_KEY = 'manually_uploaded_papers';
 
 export function saveResearcherName(orcid: string, name: string): void {
-  localStorage.setItem(`${STORAGE_PREFIX}${orcid}`, name);
+  localStorage.setItem(scopedKey(`${STORAGE_PREFIX}${orcid}`), name);
 }
 
 export function getResearcherName(orcid: string): string | null {
-  return localStorage.getItem(`${STORAGE_PREFIX}${orcid}`);
+  return localStorage.getItem(scopedKey(`${STORAGE_PREFIX}${orcid}`));
 }
 
 export function saveJobOrcid(jobId: string, orcid: string): void {
-  localStorage.setItem(`${JOB_ORCID_PREFIX}${jobId}`, orcid);
+  localStorage.setItem(scopedKey(`${JOB_ORCID_PREFIX}${jobId}`), orcid);
 }
 
 export function getJobOrcid(jobId: string): string | null {
-  return localStorage.getItem(`${JOB_ORCID_PREFIX}${jobId}`);
+  return localStorage.getItem(scopedKey(`${JOB_ORCID_PREFIX}${jobId}`));
 }
 
 export function addFetchedOrcid(orcid: string): void {
   const orcids = getFetchedOrcids();
   if (!orcids.includes(orcid)) {
     orcids.push(orcid);
-    localStorage.setItem(FETCHED_ORCIDS_KEY, JSON.stringify(orcids));
+    localStorage.setItem(scopedKey(FETCHED_ORCIDS_KEY), JSON.stringify(orcids));
   }
 }
 
 export function getFetchedOrcids(): string[] {
-  const stored = localStorage.getItem(FETCHED_ORCIDS_KEY);
+  const stored = localStorage.getItem(scopedKey(FETCHED_ORCIDS_KEY));
   return stored ? JSON.parse(stored) : [];
 }
 
 export function removeFetchedOrcid(orcid: string): void {
   const orcids = getFetchedOrcids().filter(o => o !== orcid);
-  localStorage.setItem(FETCHED_ORCIDS_KEY, JSON.stringify(orcids));
-  localStorage.removeItem(`${STORAGE_PREFIX}${orcid}`);
+  localStorage.setItem(scopedKey(FETCHED_ORCIDS_KEY), JSON.stringify(orcids));
+  localStorage.removeItem(scopedKey(`${STORAGE_PREFIX}${orcid}`));
 }
 
 export function isValidOrcid(orcid: string): boolean {

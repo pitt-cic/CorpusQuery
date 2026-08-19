@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { fetchUserAttributes, type FetchUserAttributesOutput } from 'aws-amplify/auth';
+import { initResearcherStorage } from '@/utils/researcherNames';
 
 export interface UserContextValue {
   userId: string;
@@ -29,8 +30,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
       .then((attrs: FetchUserAttributesOutput) => {
         const firstName = attrs.given_name ?? '';
         const lastName = attrs.family_name ?? '';
+        const userId = attrs.sub ?? '';
+        initResearcherStorage(userId);
         setUser({
-          userId: attrs.sub ?? '',
+          userId,
           email: attrs.email ?? '',
           firstName,
           lastName,
