@@ -34,7 +34,7 @@
 Embed a demo video of the working application here. Upload the video as a GitHub asset and paste the generated link.
 
 ```
-https://github.com/[org]/[repo]/assets/[asset-id]
+https://github.com/user-attachments/assets/628e5aba-89bb-410c-bffc-097e427c50cd
 ```
 
 > Coming soon.
