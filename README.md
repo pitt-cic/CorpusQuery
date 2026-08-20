@@ -194,6 +194,10 @@ aws cognito-idp admin-create-user \
 
 **macOS/Linux:**
 ```bash
+# Make Scripts executabe (Mac/Linux/Git Bash on Windows)
+chmod +x scripts/deploy-frontend.sh
+
+
 ./scripts/deploy-frontend.sh
 ```
 
@@ -252,6 +256,9 @@ uv run pytest
 
 **Frontend:**
 ```bash
+# Make script executable
+chmod +x scripts/create-env-local.sh
+
 # Generate .env.local from CDK outputs (macOS/Linux):
 ./scripts/create-env-local.sh
 

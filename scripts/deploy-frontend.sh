@@ -198,11 +198,13 @@ PYEOF
 esac
 
 # Verify the zip contains assets
-FILE_COUNT=$(case "$ZIP_METHOD" in
-  python3|py|python) "$ZIP_METHOD" -c "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); print(len(z.namelist()))" "$ZIP_PATH" ;;
-  *) echo "?" ;;
-esac)
+if [[ "$ZIP_METHOD" == python3 || "$ZIP_METHOD" == py || "$ZIP_METHOD" == python ]]; then
+  FILE_COUNT=$("$ZIP_METHOD" -c "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); print(len(z.namelist()))" "$ZIP_PATH")
+else
+  FILE_COUNT="?"
+fi
 echo "Zip created with $FILE_COUNT files: $ZIP_PATH" >&2
+ 
 
 echo "Creating Amplify deployment..." >&2
 read -r ZIP_UPLOAD_URL JOB_ID <<< "$(run_aws amplify create-deployment \
