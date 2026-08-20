@@ -33,8 +33,6 @@
 
 https://github.com/user-attachments/assets/628e5aba-89bb-410c-bffc-097e427c50cd
 
-> Coming soon.
-
 ---
 
 # Description
