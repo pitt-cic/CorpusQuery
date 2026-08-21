@@ -1,3 +1,4 @@
+
 # CorpusQuery
 
 | Index                         | Description                                         |
@@ -31,7 +32,7 @@
 
 # Demo
 
-https://github.com/user-attachments/assets/628e5aba-89bb-410c-bffc-097e427c50cd
+https://github.com/user-attachments/assets/57447efb-5168-4ca5-8423-c5459f53e847
 
 ---
 
