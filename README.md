@@ -341,7 +341,7 @@ Costs vary depending on the selected model and query complexity. Example for a t
 - **Program Manager**: [Dwigth Helfrich](https://www.linkedin.com/in/dwight-helfrich-53a233b/) - Program Leader, University of Pittsburgh Health Sciences and Sports Analytics Cloud Innovation Center
 
 **Special Thanks:**
-- [Alexander Chang](https://www.linkedin.com/in/alexander-chang-839a53a6/)
+- [Alexander Chang](https://www.linkedin.com/in/alexander-chang-839a53a6/) - MD-PhD Student at University of Pittsburgh School of Medicine
 
 
 > This project is designed and developed with guidance and support from
