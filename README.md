@@ -330,7 +330,7 @@ Costs vary depending on the selected model and query complexity. Example for a t
 **Development Team:**
 
 - [Angela Renion](https://www.linkedin.com/in/angela-renion/)
-- [Mohammed Misran](https://www.linkedin.com/in/mmisran/)
+- [Misran Mohammed](https://www.linkedin.com/in/mmisran/)
 - [Ava Luu](https://www.linkedin.com/in/avaluu/)
 
 
