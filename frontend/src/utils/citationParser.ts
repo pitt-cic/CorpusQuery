@@ -22,50 +22,63 @@ export function parseAnswerWithCitations(
     citationMap.set(cit.docname, entry);
   });
 
-  // Parse the answer text for (docname) or (docname chunk) patterns
   const segments: Array<{ type: 'text' | 'citation'; content: string; citation?: ParsedCitation }> = [];
-  const regex = /\(([^)]+)\)/g;
+
+  // If no citations, return the text as-is
+  if (citationMap.size === 0) {
+    segments.push({ type: 'text', content: answerText });
+    return { segments, citationMap };
+  }
+
+  // Build regex from known keys so docnames containing ")" don't break the match.
+  // The naive /\(([^)]+)\)/ stops at the first ")" — which splits keys like "elife-24146-v3 (1)chunk".
+  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const allKeys = [...citationMap.keys()].sort((a, b) => b.length - a.length); // longest first
+  const keyPattern = allKeys.map(escape).join('|');
+  // Match one citation group: (key1, key2, ...) where each key may end with optional " chunk"
+  const citationEntryRe = new RegExp(`(?:${keyPattern})(?:\\s+chunk)?`, 'g');
+  const groupRe = new RegExp(
+    `\\(((?:(?:${keyPattern})(?:\\s+chunk)?(?:,\\s*)?)+)\\)`,
+    'g'
+  );
+
   let lastIndex = 0;
   let match;
 
-  while ((match = regex.exec(answerText)) !== null) {
-    // Split on commas to handle multi-citation groups like (key1 chunk, key2 chunk)
-    const keys = match[1].split(',').map(k => k.trim().replace(/ chunk$/, ''));
-    const resolved = keys.map(k => citationMap.get(k)).filter(Boolean) as ParsedCitation[];
-
+  while ((match = groupRe.exec(answerText)) !== null) {
     // Add text before the match
     if (match.index > lastIndex) {
-      segments.push({
-        type: 'text',
-        content: answerText.substring(lastIndex, match.index),
-      });
+      segments.push({ type: 'text', content: answerText.substring(lastIndex, match.index) });
     }
 
-    // Add each resolved citation, or fall back to raw text if none matched
-    if (resolved.length > 0) {
-      for (const citation of resolved) {
-        segments.push({
-          type: 'citation',
-          content: `[${citation.number}]`,
-          citation,
-        });
+    // Extract individual keys from the group
+    citationEntryRe.lastIndex = 0;
+    let keyMatch;
+    while ((keyMatch = citationEntryRe.exec(match[1])) !== null) {
+      // Strip trailing " chunk" to get the bare key, then look up
+      const bare = keyMatch[0].replace(/\s+chunk$/, '');
+      const citation = citationMap.get(bare);
+      if (citation) {
+        segments.push({ type: 'citation', content: `[${citation.number}]`, citation });
       }
-    } else {
-      segments.push({
-        type: 'text',
-        content: match[0],
-      });
     }
 
-    lastIndex = regex.lastIndex;
+    lastIndex = groupRe.lastIndex;
   }
 
   // Add remaining text
   if (lastIndex < answerText.length) {
-    segments.push({
-      type: 'text',
-      content: answerText.substring(lastIndex),
-    });
+    segments.push({ type: 'text', content: answerText.substring(lastIndex) });
+  }
+
+  // In text segments, add spaces around parentheses where the LLM omitted them
+  // e.g. "receptor-positive(ER+)breast" → "receptor-positive (ER+) breast"
+  for (const seg of segments) {
+    if (seg.type === 'text') {
+      seg.content = seg.content
+        .replace(/(\S)\(/g, '$1 (')
+        .replace(/\)(\S)/g, ') $1');
+    }
   }
 
   return { segments, citationMap };
