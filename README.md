@@ -19,7 +19,7 @@
 
 # Overview
 
-> **CorpusQuery** is a serverless AI-powered writing assistant designed to help senior faculty members offload the low-level, high-volume writing work that fills their days, such as grants, manuscripts, trainee letters, and letters of support. The solution uses Amazon Bedrock, PaperQA, and Claude LLMs to build a personalized knowledge base from a faculty member's own publication history, then puts that context to work through cited Q&A.
+**CorpusQuery** is a serverless AI-powered writing assistant designed to help senior faculty members offload the low-level, high-volume writing work that fills their days, such as grants, manuscripts, trainee letters, and letters of support. The solution uses Amazon Bedrock, PaperQA, and Claude LLMs to build a personalized knowledge base from a faculty member's own publication history, then puts that context to work through cited Q&A.
 
 **Key capabilities include:**
 
@@ -325,7 +325,7 @@ Costs vary depending on the selected model and query complexity. Example for a t
 
 # Credits
 
-**CorpusQuery** is an open-source project developed by the University of Pittsburgh Health Sciences and Sports Analytics Cloud Innovation Center.
+**CorpusQuery** is an open-source project developed by the University of Pittsburgh Cloud Innovation Center, Powered by AWS.
 
 **Development Team:**
 
@@ -337,15 +337,15 @@ Costs vary depending on the selected model and query complexity. Example for a t
 **Project Leadership:**
 
 - **Technical Lead**: [Maciej Zukowski](https://www.linkedin.com/in/maciejzukowski/) - Solutions Architect, Amazon Web Services (AWS)
-- **Program Manager**: [Kate Ulreich](https://www.linkedin.com/in/kate-ulreich-0a8902134/) - Program Leader, University of Pittsburgh Health Sciences and Sports Analytics Cloud Innovation Center
-- **Program Manager**: [Dwight Helfrich](https://www.linkedin.com/in/dwight-helfrich-53a233b/) - Program Leader, University of Pittsburgh Health Sciences and Sports Analytics Cloud Innovation Center
+- **Program Manager**: [Kate Ulreich](https://www.linkedin.com/in/kate-ulreich-0a8902134/) - Lead, Digital Marketing Strategy, Pitt Digital
+- **Program Manager**: [Dwight Helfrich](https://www.linkedin.com/in/dwight-helfrich-53a233b/) - Program Leader, University of Pittsburgh Pittsburgh Cloud Innovation Center, Powered by AWS
 
 **Special Thanks:**
 - [Alexander Chang](https://www.linkedin.com/in/alexander-chang-839a53a6/) - MD-PhD Student at University of Pittsburgh School of Medicine
 
 
 > This project is designed and developed with guidance and support from
-> the [Health Sciences and Sports Analytics Cloud Innovation Center, powered by AWS](https://digital.pitt.edu/cic).
+> the [Pitt Cloud Innovation Center, Powered by AWS](https://digital.pitt.edu/cic).
 ---
 
 # License
@@ -355,7 +355,7 @@ This project is licensed under the [MIT License](./LICENSE).
 ```plaintext
 MIT License
 
-Copyright (c) 2026 University of Pittsburgh Health Sciences and Sports Analytics Cloud Innovation Center
+Copyright (c) 2026 University of Pittsburgh Cloud Innovation Center, Powered by AWS
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
