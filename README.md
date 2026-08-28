@@ -325,7 +325,7 @@ Costs vary depending on the selected model and query complexity. Example for a t
 
 # Credits
 
-**CorpusQuery** is an open-source project developed by the University of Pittsburgh Cloud Innovation Center, Powered by AWS.
+**CorpusQuery** is an open-source project developed by the Pitt Cloud Innovation Center, Powered by AWS.
 
 **Development Team:**
 
@@ -338,7 +338,7 @@ Costs vary depending on the selected model and query complexity. Example for a t
 
 - **Technical Lead**: [Maciej Zukowski](https://www.linkedin.com/in/maciejzukowski/) - Solutions Architect, Amazon Web Services (AWS)
 - **Program Manager**: [Kate Ulreich](https://www.linkedin.com/in/kate-ulreich-0a8902134/) - Lead, Digital Marketing Strategy, Pitt Digital
-- **Program Manager**: [Dwight Helfrich](https://www.linkedin.com/in/dwight-helfrich-53a233b/) - Program Leader, University of Pittsburgh Pittsburgh Cloud Innovation Center, Powered by AWS
+- **Program Manager**: [Dwight Helfrich](https://www.linkedin.com/in/dwight-helfrich-53a233b/) - Program Leader, Pitt Cloud Innovation Center, Powered by AWS
 
 **Special Thanks:**
 - [Alexander Chang](https://www.linkedin.com/in/alexander-chang-839a53a6/) - MD-PhD Student at University of Pittsburgh School of Medicine
@@ -355,7 +355,7 @@ This project is licensed under the [MIT License](./LICENSE).
 ```plaintext
 MIT License
 
-Copyright (c) 2026 University of Pittsburgh Cloud Innovation Center, Powered by AWS
+Copyright (c) 2026 Pitt Cloud Innovation Center, Powered by AWS
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
