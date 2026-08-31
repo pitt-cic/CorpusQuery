@@ -337,7 +337,7 @@ Costs vary depending on the selected model and query complexity. Example for a t
 **Project Leadership:**
 
 - **Technical Lead**: [Maciej Zukowski](https://www.linkedin.com/in/maciejzukowski/) - Solutions Architect, Amazon Web Services (AWS)
-- **Program Manager**: [Kate Ulreich](https://www.linkedin.com/in/kate-ulreich-0a8902134/) - Lead, Digital Marketing Strategy, Pitt Digital
+- **Marketing Lead**: [Kate Ulreich](https://www.linkedin.com/in/kate-ulreich-0a8902134/) - Lead, Digital Marketing Strategy, Pitt Digital
 - **Program Manager**: [Dwight Helfrich](https://www.linkedin.com/in/dwight-helfrich-53a233b/) - Program Leader, Pitt Cloud Innovation Center, Powered by AWS
 
 **Special Thanks:**
