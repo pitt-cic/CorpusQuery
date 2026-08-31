@@ -378,7 +378,7 @@ SOFTWARE.
 
 ---
 
-For questions, issues, or contributions, please visit our [GitHub repository](https://github.com/pitt-cic/digital-twin-private) or contact the development team.
+For questions, issues, or contributions, please visit our [GitHub repository](https://github.com/pitt-cic/CorpusQuery) or contact the development team.
 
 ---
 
