@@ -1,6 +1,6 @@
 import { motion } from 'motion/react';
 
-const DEMO_VIDEO_URL = 'https://github.com/user-attachments/assets/57447efb-5168-4ca5-8423-c5459f53e847';
+const DEMO_VIDEO_URL = './CorpusQuery (1).mp4';
 
 export function Demo() {
   return (
