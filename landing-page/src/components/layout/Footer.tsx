@@ -11,9 +11,9 @@ const team = [
 ];
 
 const leadership = [
-  { name: 'Maciej Zukowski',  href: 'https://www.linkedin.com/in/maciejzukowski/' },
-  { name: 'Kate Ulreich',     href: 'https://www.linkedin.com/in/kate-ulreich-0a8902134/' },
-  { name: 'Dwight Helfrich',  href: 'https://www.linkedin.com/in/dwight-helfrich-53a233b/' },
+  { name: 'Maciej Zukowski ',  href: 'https://www.linkedin.com/in/maciejzukowski/' },
+  { name: 'Kate Ulreich ',     href: 'https://www.linkedin.com/in/kate-ulreich-0a8902134/' },
+  { name: 'Dwight Helfrich ',  href: 'https://www.linkedin.com/in/dwight-helfrich-53a233b/' },
 ];
 
 export function Footer() {

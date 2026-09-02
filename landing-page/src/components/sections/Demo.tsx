@@ -15,11 +15,11 @@ export function Demo() {
         >
           <h2 className="font-serif text-3xl md:text-4xl font-medium mb-4 text-[var(--color-ink)]">
             See It In <span className="text-gradient">Action</span>
-          </h2>
+          </h2>  
           <p className="text-[var(--color-ink-muted)] max-w-2xl mx-auto">
             Watch how CorpusQuery ingests papers and answers natural-language questions with inline citations.
           </p>
-        </motion.div>
+        </motion.div> 
 
         <motion.div
           initial={{ opacity: 0, y: 30 }}
