@@ -1,0 +1,108 @@
+import { Slide } from "deckx"
+
+<Slide tab="intro">
+
+# CorpusQuery
+
+Created by: Angela Renion, Misran Mohammed, and Ava Luu
+Collaborated with Alexander Chang - MD-PhD Student at University of Pittsburgh School of Medicine
+
+</Slide>
+
+<Slide tab="problem">
+# Problem Statement
+
+- PhD students often need to find **specific information** from a faculty member's body of work.
+- Senior faculty members face enormous volumes of writing tasks, and may **not have time to promptly respond** to students' questions about their work.
+- Students tend to submit drafts to senior faculty that could have been verified for **scientific accuracy and consistency** earlier on.
+
+</Slide>
+
+<Slide tab="solution">
+# Solution
+
+- A "research assistant" that answers your questions, grounded in a researcher's actual papers.
+- Automated research paper fetching + manual PDF upload option
+- Filtered information retrieval based on researcher
+
+Output: PaperQA-generated answers that include citations and downloadable PDFs of the referenced papers.
+
+</Slide>
+
+<Slide tab="architecture">
+# Architecture Overview
+
+```         
+                                    S3 ← PDFs
+                                    ↑
+Browser → Cognito →  API Gateway → Lambda → Bedrock (Claude)
+                                    ↓
+                                API calls (Unpaywall, OpenAlex, NCBI)
+                                    ↓
+                                    S3
+```
+
+- **CDK*** IaC (Infrastructure as Code)
+- **Serverless** (pay per use)
+- Solution on **Github** for more technical details
+
+</Slide>
+
+<Slide tab="challenges">
+# Challenges
+
+Building CorpusQuery was not a simple path:
+
+- Had to continue the project **solo** and understand the **existing codebase** from past teammates' work.
+- **Validating output** required prior knowledge of biological concepts and extra time to read research papers.
+- Trial and error in workflow to **fetch papers** legally and without requiring subscriptions or payment.
+
+</Slide>
+
+<Slide tab="validation">
+# Validation
+
+- Web app was given to other CIC interns to test deployment, and given to Alexander Chang for query testing.
+- Read papers that were in the knowledge base and queried simple questions about the papers to verify paper retrieval and accuracy.
+- Implemented feedback on features (added paper fetching feature, removed styleguide feature)
+- Next steps: Test more complex queries that require extensive knowledge about subject
+
+</Slide>
+
+<Slide tab="pricing">
+# Pricing
+
+Costs vary depending on the selected model and query complexity. Example for a typical PaperQA query using Claude Sonnet on Bedrock:
+
+| Component | Usage | Approximate Cost |
+|:----------|:-----:|----------------:|
+| Titan Embed v2 (retrieval) | ~20 chunks × 512 tokens | $0.0002 |
+| Claude Sonnet (summarize + generate) | ~8,000 input / ~600 output tokens | $3/1M tokens (Sonnet 4.6) x 8600 tokens = ~$0.03 |
+| **Total per query** | | **~$0.03** |
+
+| Monthly Usage | Estimated Cost |
+|:--------------|---------------:|
+| 100 queries | ~$3 |
+| 500 queries | ~$15 |
+| 1,000 queries | ~$30 |
+
+</Slide>
+
+<Slide tab="opensource">
+# Open Source
+
+CorpusQuery is **fully open source**
+- MIT licensed -- use it, fork it, build on it
+- All infrastructure as code (AWS CDK TypeScript)
+- Full backend, frontend, and deployment scripts included
+
+</Slide>
+
+<Slide tab="demo">
+# Live Demo
+</Slide>
+
+<Slide tab="questions">
+# Thank You to everyone involved in this project (Maciej, Kate, Dwight, Alex)
+- Any Questions?
+</Slide>

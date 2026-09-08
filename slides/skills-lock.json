@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "deckx": {
+      "source": "samuelcolvin/deckx",
+      "sourceType": "github",
+      "skillPath": "skills/deckx/SKILL.md",
+      "computedHash": "8b19db9e17b80c6c9236d177203b21aaa808415fca587f501af842b2df384e34"
+    }
+  }
+}

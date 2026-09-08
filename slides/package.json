@@ -1,0 +1,16 @@
+{
+  "name": "slides",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "^19.2.18"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@samuelcolvin/deckx": "^0.0.7"
+  }
+}
