@@ -22,9 +22,9 @@ Collaborated with Alexander Chang - MD-PhD Student at University of Pittsburgh S
 <Slide tab="solution">
 # Solution
 
-- A "research assistant" that answers your questions, grounded in a researcher's actual papers.
+- A **"research assistant"** that answers your questions, grounded in a researcher's **actual papers**.
 - Automated research paper fetching + manual PDF upload option
-- Filtered information retrieval based on researcher
+- **Filtered information retrieval** based on researcher
 
 Output: PaperQA-generated answers that include citations and downloadable PDFs of the referenced papers.
 
@@ -43,7 +43,7 @@ Browser → Cognito →  API Gateway → Lambda → Bedrock (Claude)
                                     S3
 ```
 
-- **CDK*** IaC (Infrastructure as Code)
+- **CDK** IaC (Infrastructure as Code)
 - **Serverless** (pay per use)
 - Solution on **Github** for more technical details
 
@@ -63,15 +63,15 @@ Building CorpusQuery was not a simple path:
 <Slide tab="validation">
 # Validation
 
-- Web app was given to other CIC interns to test deployment, and given to Alexander Chang for query testing.
-- Read papers that were in the knowledge base and queried simple questions about the papers to verify paper retrieval and accuracy.
+- Web app was given to other CIC interns to test deployment, and given to Alexander Chang for query testing
+- Read papers that were in the knowledge base and queried simple questions about the papers to verify paper retrieval and accuracy
 - Implemented feedback on features (added paper fetching feature, removed styleguide feature)
 - Next steps: Test more complex queries that require extensive knowledge about subject
 
 </Slide>
 
 <Slide tab="pricing">
-# Pricing
+# Cost Analysis
 
 Costs vary depending on the selected model and query complexity. Example for a typical PaperQA query using Claude Sonnet on Bedrock:
 

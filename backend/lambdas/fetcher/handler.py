@@ -1,5 +1,7 @@
 import io
 import os
+import re
+import unicodedata
 import boto3
 from botocore import UNSIGNED
 from botocore.config import Config
@@ -15,7 +17,8 @@ from shared import JobsRepository
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 TABLE_NAME = os.getenv("SESSIONS_AND_CHAT_HISTORY_TABLE_NAME","")
-headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+api_headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+download_headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/pdf, */*"}
 
 PMC_OA_BUCKET = 'pmc-oa-opendata'
 pmc_s3 = boto3.client('s3', region_name='us-east-1', config=Config(signature_version=UNSIGNED))
@@ -88,7 +91,8 @@ def handler(event, context):
                     failure_reason = "not_found"
                 else:
                     doi_dict = response.json()
-                    oa_locations = doi_dict.get('oa_locations') or []
+                    oa_locations = (doi_dict.get('oa_locations') or []) + \
+                                   (doi_dict.get('oa_locations_embargoed') or [])
                     if not oa_locations:
                         failure_reason = "not_open_access"
                     else:
@@ -121,7 +125,7 @@ def handler(event, context):
 
             # Step 2: OpenAlex
             if not downloaded:
-                url = search_by_title(title, orcid, openalex_api_key)
+                url = search_by_title(title, orcid, openalex_api_key, doi=doi)
                 time.sleep(0.2)
                 if url:
                     attempted_url = url
@@ -239,92 +243,179 @@ def handler(event, context):
 def get_doi_and_title(orcid):
     dois = []
 
-    # pulls ORCID works list
-    response = requests.get(f"https://pub.orcid.org/v3.0/{orcid}/works", headers=headers)
-    if not response.ok or not response.text.strip():
-        raise ValueError(f"ORCID API returned {response.status_code} for {orcid}: {response.text[:200]}")
-    data = response.json()
+    # pulls ORCID works list — paginate to get all works (default page size is 100)
+    groups = []
+    page_size = 100
+    start = 0
+    while True:
+        response = requests.get(
+            f"https://pub.orcid.org/v3.0/{orcid}/works",
+            headers=api_headers,
+            params={"page-size": page_size, "start": start},
+        )
+        if not response.ok or not response.text.strip():
+            raise ValueError(f"ORCID API returned {response.status_code} for {orcid}: {response.text[:200]}")
+        data = response.json()
+        page_groups = data.get("group", [])
+        groups.extend(page_groups)
+        if len(page_groups) < page_size:
+            break
+        start += page_size
 
     doi_to_title = {}
     no_doi_titles = []
 
-    for group in data.get("group", []):
-        summary = group["work-summary"][0]
-        work_type = summary.get("type", "").lower().replace("_", "-")
-        if work_type not in PAPER_WORK_TYPES:
-            logger.info(f"Skipping work of type '{work_type}': {summary['title']['title']['value']}")
+    for group in groups:
+        summaries = group.get("work-summary", [])
+        if not summaries:
             continue
-        title = summary["title"]["title"]["value"]
+        # Use first summary for work type and title, but search all summaries for a DOI
+        first = summaries[0]
+        work_type = first.get("type", "").lower().replace("_", "-")
+        if work_type not in PAPER_WORK_TYPES:
+            logger.info(f"Skipping work of type '{work_type}': {first['title']['title']['value']}")
+            continue
+        title = first["title"]["title"]["value"]
         doi = None
-        ext_ids = summary.get("external-ids") or {}
-
-        for ext_id in (ext_ids.get("external-id") or []):
-            if ext_id["external-id-type"] == "doi":
-                doi = ext_id["external-id-value"]
+        for summary in summaries:
+            ext_ids = summary.get("external-ids") or {}
+            for ext_id in (ext_ids.get("external-id") or []):
+                if ext_id["external-id-type"] == "doi":
+                    doi = ext_id["external-id-value"]
+                    break
+            if doi:
                 break
 
         if doi:
+            # Normalize: ORCID sometimes stores DOIs as full URLs
+            if doi.startswith("https://doi.org/"):
+                doi = doi[len("https://doi.org/"):]
+            elif doi.startswith("http://doi.org/"):
+                doi = doi[len("http://doi.org/"):]
+            elif doi.startswith("http://dx.doi.org/"):
+                doi = doi[len("http://dx.doi.org/"):]
+            elif doi.startswith("https://dx.doi.org/"):
+                doi = doi[len("https://dx.doi.org/"):]
             dois.append(doi)
             doi_to_title[doi] = title
         else:
             no_doi_titles.append(title)
 
-    print(f"Total works: {len(data.get('group', []))} | With DOI: {len(dois)} | Without DOI: {len(no_doi_titles)}")
+    print(f"Total works: {len(groups)} | With DOI: {len(dois)} | Without DOI: {len(no_doi_titles)}")
     return (dois, no_doi_titles, doi_to_title)
 
 
 
-def search_by_title(title, orcid, api_key):
+def normalize_title(title: str) -> str:
+    """Lowercase, strip accents, collapse whitespace, remove punctuation for fuzzy title comparison."""
+    # Normalize unicode (e.g. accented chars → base + combining mark, then drop combining marks)
+    title = unicodedata.normalize("NFD", title)
+    title = "".join(c for c in title if unicodedata.category(c) != "Mn")
+    title = title.lower()
+    # Replace any punctuation/special chars with a space
+    title = re.sub(r"[^\w\s]", " ", title)
+    # Collapse whitespace
+    title = re.sub(r"\s+", " ", title).strip()
+    return title
 
-    query_params = {
-        "search": title,
-        "filter": f"author.orcid:{orcid}",
-        "api_key": api_key,
-    }
 
-    response = requests.get("https://api.openalex.org/works", params=query_params)
-    if not response.ok or not response.text.strip():
-        logger.warning(f"OpenAlex returned {response.status_code} for title '{title}'")
-        return None
-    results = response.json()
+def _get_oa_url_from_work(work: dict, title: str) -> str | None:
+    """
+    Extract the best OA URL from an OpenAlex work object.
+    Prefers a direct pdf_url from any OA location before falling back to landing pages.
+    """
+    candidates = [
+        work.get('primary_location') or {},
+        work.get('best_oa_location') or {},
+        *(work.get('locations') or []),
+    ]
+    oa_locations = [loc for loc in candidates if loc.get('is_oa')]
 
-    try: 
-
-        result_list = results.get('results') or []
-
-        if not result_list:
-            logger.info(f"No results found for {title} with ORCID {orcid}")
-            return None
-
-        results_dict = result_list[0]
-
-        print(results_dict)
-        
-        prim_loc = results_dict.get('primary_location', '')
-
-        if prim_loc.get('is_oa') == True:
-            pdf_url = prim_loc.get('pdf_url')
-
-            if pdf_url and pdf_url.lower().split('?')[0].endswith(SKIP_URL_EXTENSIONS):
-                logger.info(f"Skipping non-PDF URL for '{title}': {pdf_url}")
-                return None
-
-            if pdf_url == None:
-                landing_page = prim_loc.get('doi', '')
-                if landing_page:
-                    logger.info(f'doi for {title}: {landing_page}')
-                    return landing_page
-
-            logger.info(f'Successfully retrieved URL for {title}: {pdf_url}')
+    # Pass 1: prefer direct PDF links across all OA locations
+    for loc in oa_locations:
+        pdf_url = loc.get('pdf_url')
+        if pdf_url and not pdf_url.lower().split('?')[0].endswith(SKIP_URL_EXTENSIONS):
+            logger.info(f"Found OA PDF URL for '{title}': {pdf_url}")
             return pdf_url
 
-        else:
-            logger.info(f'No open access pdf available for document {title}')
+    # Pass 2: fall back to landing pages
+    for loc in oa_locations:
+        landing = loc.get('landing_page_url')
+        if landing:
+            logger.info(f"Found OA landing page for '{title}': {landing}")
+            return landing
+
+    return None
+
+
+def search_by_title(title, orcid, api_key, doi=None):
+    openalex_params = {"api_key": api_key} if api_key else {}
+
+    # Strategy 1: DOI direct lookup — most reliable when we have a DOI
+    if doi:
+        try:
+            resp = requests.get(
+                f"https://api.openalex.org/works/doi:{doi}",
+                params=openalex_params,
+                timeout=10,
+            )
+            if resp.ok and resp.text.strip():
+                work = resp.json()
+                url = _get_oa_url_from_work(work, title)
+                if url:
+                    return url
+                logger.info(f"OpenAlex DOI lookup found '{title}' but it is not OA")
+                return None
+        except Exception as e:
+            logger.warning(f"OpenAlex DOI lookup failed for {doi}: {e}")
+
+    # Strategy 2: title + ORCID filter
+    if not orcid.startswith("https://orcid.org/"):
+        orcid_filter = f"https://orcid.org/{orcid}"
+    else:
+        orcid_filter = orcid
+    # Strip quotes from title to avoid breaking the filter syntax
+    safe_title = title.replace('"', '')
+    normalized_query = normalize_title(title)
+
+    for filter_str in [
+        f'title.search:"{safe_title}",author.orcid:{orcid_filter}',
+        f'title.search:"{safe_title}"',  # Strategy 3: title-only fallback (ORCID may not be linked)
+    ]:
+        try:
+            resp = requests.get(
+                "https://api.openalex.org/works",
+                params={"filter": filter_str, **openalex_params},
+                timeout=10,
+            )
+            if not resp.ok or not resp.text.strip():
+                logger.warning(f"OpenAlex returned {resp.status_code} for filter '{filter_str}'")
+                continue
+            result_list = resp.json().get('results') or []
+            if not result_list:
+                continue
+
+            # Verify a result matches our title before trusting it
+            match = None
+            for candidate in result_list:
+                if normalize_title(candidate.get('title') or '') == normalized_query:
+                    match = candidate
+                    break
+            if match is None:
+                continue
+
+            url = _get_oa_url_from_work(match, title)
+            if url:
+                return url
+            # Found the paper but it's not OA — stop searching, don't try title-only
+            logger.info(f"OpenAlex found '{title}' but it is not OA")
             return None
 
-    except Exception as e:
-        print(f'Error: {e}')
-        pass
+        except Exception as e:
+            logger.warning(f"OpenAlex search failed for '{title}': {e}")
+
+    logger.info(f"OpenAlex could not find '{title}'")
+    return None
 
 
 
@@ -332,7 +423,7 @@ def search_by_title(title, orcid, api_key):
 def get_researcher_last_name(orcid: str) -> str | None:
     """Fetch the researcher's family name from the ORCID public API."""
     try:
-        resp = requests.get(f"https://pub.orcid.org/v3.0/{orcid}/person", headers=headers, timeout=10)
+        resp = requests.get(f"https://pub.orcid.org/v3.0/{orcid}/person", headers=api_headers, timeout=10)
         if not resp.ok:
             return None
         data = resp.json()
@@ -346,22 +437,28 @@ def search_pmc_by_title(title: str, api_key: str | None, author_last_name: str) 
     Use NCBI API to search PubMed for a paper by title and author last name.
     Returns the PMCID (e.g. 'PMC1234567') if found, or None.
     """
+    base_params = {"db": "pmc", "retmode": "json", "retmax": 1}
+    if api_key:
+        base_params["api_key"] = api_key
+
+    # Try exact quoted title first, then unquoted (broader) as fallback
+    terms = [
+        f'"{title}"[Title] AND "{author_last_name}"[Author]',
+        f'{title}[Title] AND "{author_last_name}"[Author]',
+    ]
     try:
-        term = f'"{title}"[Title] AND "{author_last_name}"[Author]'
-        params = {"db": "pmc", "term": term, "retmode": "json", "retmax": 1}
-        if api_key:
-            params["api_key"] = api_key
-        resp = requests.get(
-            "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi", 
-            params=params,
-            timeout=10,
-        )
-        if not resp.ok:
-            return None
-        ids = resp.json().get("esearchresult", {}).get("idlist", [])
-        if not ids:
-            return None
-        return f"PMC{ids[0]}"
+        for term in terms:
+            resp = requests.get(
+                "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi",
+                params={"term": term, **base_params},
+                timeout=10,
+            )
+            if not resp.ok:
+                continue
+            ids = resp.json().get("esearchresult", {}).get("idlist", [])
+            if ids:
+                return f"PMC{ids[0]}"
+        return None
     except Exception:
         return None
 
@@ -404,9 +501,10 @@ def download_from_pmc_bucket(pmcid: str, orcid: str, title: str) -> bool:
         logger.info(f"{pmcid} not found in PMC OA dataset")
         return False
 
+    safe_title = re.sub(r'[^\w\s\-]', '_', title).strip()
     for ft in ("pdf", "txt"):
         src_key = f"{prefix}/{prefix}.{ft}"
-        dest_key = f"fetched-papers/{orcid}/{title}.{ft}"
+        dest_key = f"fetched-papers/{orcid}/{safe_title}.{ft}"
         content_type = "application/pdf" if ft == "pdf" else "text/plain"
         try:
             obj = pmc_s3.get_object(Bucket=PMC_OA_BUCKET, Key=src_key)
@@ -437,10 +535,11 @@ def download_to_bucket(orcid, title, url) -> bool:
     Returns False on any HTTP error (403, 404, etc.) without raising.
     """
     bucket = BUCKET_NAME
-    key = f'fetched-papers/{orcid}/{title}.pdf'
+    safe_title = re.sub(r'[^\w\s\-]', '_', title).strip()
+    key = f'fetched-papers/{orcid}/{safe_title}.pdf'
 
     try:
-        with requests.get(url, headers=headers, stream=True, timeout=30) as r:
+        with requests.get(url, headers=download_headers, stream=True, timeout=30) as r:
             r.raise_for_status()
 
             content_type = r.headers.get('Content-Type', '')
