@@ -4,6 +4,8 @@ import { Slide } from "deckx"
 
 # CorpusQuery
 
+## RAG research helper with cited responses
+
 Created by: Angela Renion, Misran Mohammed, and Ava Luu
 
 Collaborated with Alexander Chang - MD-PhD Student at University of Pittsburgh School of Medicine
@@ -36,11 +38,11 @@ Output: PaperQA-generated answers that include citations and downloadable PDFs o
 ```         
                                     S3 ← PDFs
                                     ↑
-Browser → Cognito →  API Gateway → Lambda → Bedrock (Claude)
+Browser → Cognito →  API Gateway → Lambda → Bedrock (PaperQA, Claude)
                                     ↓
                                 API calls (Unpaywall, OpenAlex, NCBI)
                                     ↓
-                                    S3
+                                    S3 Vectors 
 ```
 
 - **CDK** IaC (Infrastructure as Code)
@@ -52,7 +54,7 @@ Browser → Cognito →  API Gateway → Lambda → Bedrock (Claude)
 <Slide tab="challenges">
 # Challenges
 
-Building CorpusQuery was not a simple path:
+Building CorpusQuery was not easy:
 
 - Had to continue the project **solo** and understand the **existing codebase** from past teammates' work.
 - **Validating output** required prior knowledge of biological concepts and extra time to read research papers.

@@ -80,14 +80,20 @@ async def index_document_from_s3(
 
     logger.info(f"Generated {len(embeddings)} embeddings")
 
+    def _truncate_utf8(s: str, max_bytes: int) -> str:
+        encoded = s.encode("utf-8")
+        if len(encoded) <= max_bytes:
+            return s
+        return encoded[:max_bytes].decode("utf-8", errors="ignore")
+
     # Write vectors with ORCID metadata
     vectors = [
         {
             "key": f"{local_path.stem}_{i:04d}",
             "data": {"float32": emb},
             "metadata": {
-                "text": texts[i].text[:1500],
-                "docname": local_path.stem,
+                "text": _truncate_utf8(texts[i].text, 900),
+                "docname": _truncate_utf8(local_path.stem, 200),
                 "chunk_index": str(i),
                 "orcid": orcid,  # ← KEY METADATA
             },

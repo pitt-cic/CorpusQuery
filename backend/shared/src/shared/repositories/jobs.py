@@ -42,6 +42,7 @@ class JobsRepository:
                 ":prefix": "job#",
                 ":jid": job_id,
             },
+            ConsistentRead=True,
         )
         items = response.get("Items", [])
         return self._item_to_job(items[0]) if items else None

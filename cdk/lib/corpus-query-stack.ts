@@ -19,7 +19,9 @@ import {
   aws_s3 as s3,
   aws_bedrock as bedrock,
   aws_cognito as cognito,
+  aws_sqs as sqs,
 } from "aws-cdk-lib";
+import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 import { Construct } from "constructs";
 import * as amplify from "@aws-cdk/aws-amplify-alpha";
 
@@ -425,7 +427,6 @@ export class CorpusQueryStack extends Stack {
 
     sessionsTable.grantReadWriteData(indexerLambda);
 
-    indexerLambda.grantInvoke(fetcherLambda);
     fetchedBucket.grantRead(indexerLambda);
     papersBucket.grantRead(indexerLambda);
 
@@ -447,7 +448,37 @@ export class CorpusQueryStack extends Stack {
       })
     );
 
-    fetcherLambda.addEnvironment('INDEXER_FUNCTION_NAME', indexerLambda.functionName);
+    // SQS queues for fan-out indexing
+    const indexingJobsDLQ = new sqs.Queue(this, 'IndexingJobsDLQ', {
+      retentionPeriod: Duration.days(14),
+    });
+    const indexingBatchesDLQ = new sqs.Queue(this, 'IndexingBatchesDLQ', {
+      retentionPeriod: Duration.days(14),
+    });
+    const indexingJobsQueue = new sqs.Queue(this, 'IndexingJobsQueue', {
+      visibilityTimeout: Duration.minutes(15),
+      deadLetterQueue: { queue: indexingJobsDLQ, maxReceiveCount: 3 },
+    });
+    const indexingBatchesQueue = new sqs.Queue(this, 'IndexingBatchesQueue', {
+      visibilityTimeout: Duration.minutes(15),
+      deadLetterQueue: { queue: indexingBatchesDLQ, maxReceiveCount: 3 },
+    });
+
+    // Coordinator: at most 2 concurrent; workers: at most 10 concurrent
+    indexerLambda.addEventSource(new SqsEventSource(indexingJobsQueue, {
+      batchSize: 1,
+      maxConcurrency: 2,
+    }));
+    indexerLambda.addEventSource(new SqsEventSource(indexingBatchesQueue, {
+      batchSize: 1,
+      maxConcurrency: 5,
+    }));
+
+    indexingJobsQueue.grantSendMessages(fetcherLambda);
+    indexingBatchesQueue.grantSendMessages(indexerLambda);
+
+    fetcherLambda.addEnvironment('INDEXING_JOBS_QUEUE_URL', indexingJobsQueue.queueUrl);
+    indexerLambda.addEnvironment('INDEXING_BATCHES_QUEUE_URL', indexingBatchesQueue.queueUrl);
 
     // Secrets Manager permissions for Fetcher Lambda (user API keys e.g. OPENALEX_API_KEY)
     fetcherLambda.addToRolePolicy(
@@ -768,7 +799,6 @@ export class CorpusQueryStack extends Stack {
       "find /asset-output -type d -name test -exec rm -rf {} + 2>/dev/null || true",
       "find /asset-output -type d -name testing -exec rm -rf {} + 2>/dev/null || true",
       "find /asset-output -type d -name examples -exec rm -rf {} + 2>/dev/null || true",
-      "find /asset-output -type d -name docs -exec rm -rf {} + 2>/dev/null || true",
       // Remove __pycache__ and .pyc files
       "find /asset-output -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true",
       "find /asset-output -name '*.pyc' -delete 2>/dev/null || true",

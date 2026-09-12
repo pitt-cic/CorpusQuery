@@ -1,4 +1,5 @@
 import os
+import json
 import boto3
 import asyncio
 import logging
@@ -19,11 +20,14 @@ s3 = boto3.client("s3")
 s3vectors = boto3.client("s3vectors")
 bedrock = boto3.client("bedrock-runtime")
 dynamodb = boto3.resource("dynamodb")
+sqs = boto3.client("sqs")
 
 FETCHED_BUCKET = os.environ["FETCHED_BUCKET_NAME"]
 VECTOR_BUCKET = os.environ["VECTOR_BUCKET"]
 INDEX_NAME = os.environ["VECTOR_INDEX"]
 TABLE_NAME = os.environ["SESSIONS_AND_CHAT_HISTORY_TABLE_NAME"]
+INDEXING_BATCHES_QUEUE_URL = os.environ["INDEXING_BATCHES_QUEUE_URL"]
+BATCH_SIZE = 20
 
 def handler(event, context):
     """Index papers for a given ORCID.
@@ -32,12 +36,21 @@ def handler(event, context):
     - Fetcher path (default): scans all files under fetched-papers/{orcid}/
     - Manual upload path: indexes explicit files provided in event["files"]
       as a list of {bucket, key} dicts (e.g. papers/{user_id}/{orcid}/{file})
+
+    Can be triggered by SQS (Records wrapper) or invoked directly.
+    When the file list exceeds BATCH_SIZE, fans out to the batches queue.
     """
-    orcid = event["orcid"]
-    user_id = event.get("user_id")
-    sk = event.get("sk")
-    answer = event.get("answer", "")
-    explicit_files = event.get("files")  # optional: [{bucket, key}, ...]
+    # Handle SQS trigger (Records wrapper) or direct invocation
+    if "Records" in event:
+        payload = json.loads(event["Records"][0]["body"])
+    else:
+        payload = event
+
+    orcid = payload["orcid"]
+    user_id = payload.get("user_id")
+    sk = payload.get("sk")
+    answer = payload.get("answer", "")
+    explicit_files = payload.get("files")  # optional: [{bucket, key}, ...]
 
     jobs_repo = JobsRepository(dynamodb.Table(TABLE_NAME)) if user_id and sk else None
 
@@ -67,12 +80,34 @@ def handler(event, context):
             logger.info(f"Indexing {len(file_list)} explicit files for ORCID {orcid}")
         else:
             # Fetcher path: scan all files under fetched-papers/{orcid}/
-            response = s3.list_objects_v2(Bucket=FETCHED_BUCKET, Prefix=f"fetched-papers/{orcid}/")
-            files = response.get("Contents", [])
+            paginator = s3.get_paginator("list_objects_v2")
+            files = []
+            for page in paginator.paginate(Bucket=FETCHED_BUCKET, Prefix=f"fetched-papers/{orcid}/"):
+                files.extend(page.get("Contents", []))
             logger.info(f"Found {len(files)} files in S3 for ORCID {orcid}")
             file_list = [(FETCHED_BUCKET, obj["Key"]) for obj in files if obj["Key"].endswith((".pdf", ".txt"))]
 
-        with ThreadPoolExecutor(max_workers=5) as executor:
+            # Fan out if too many files for a single invocation
+            if len(file_list) > BATCH_SIZE:
+                batches = [file_list[i:i+BATCH_SIZE] for i in range(0, len(file_list), BATCH_SIZE)]
+                logger.info(f"Fan-out: {len(file_list)} files → {len(batches)} batches of {BATCH_SIZE}")
+                for batch in batches:
+                    sqs.send_message(
+                        QueueUrl=INDEXING_BATCHES_QUEUE_URL,
+                        MessageBody=json.dumps({
+                            "orcid": orcid,
+                            "files": [{"bucket": b, "key": k} for b, k in batch],
+                        }),
+                    )
+                if jobs_repo:
+                    jobs_repo.update_job_status(
+                        user_id, sk, "completed",
+                        answer=answer,
+                        completed_at=datetime.now(timezone.utc).isoformat(),
+                    )
+                return {"statusCode": 200, "body": f"Fanned out {len(batches)} batches"}
+
+        with ThreadPoolExecutor(max_workers=10) as executor:
             futures = {executor.submit(index_file, bucket, key): key for bucket, key in file_list}
             for future in as_completed(futures):
                 key = futures[future]

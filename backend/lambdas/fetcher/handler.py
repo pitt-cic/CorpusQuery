@@ -61,7 +61,9 @@ def handler(event, context):
     sk = job["sk"]
     logger.info(f"Found job with SK: {sk}")
 
-    try: 
+    try:
+
+        jobs_repo.update_job_status(user_id, sk, "processing")
 
         researcher_last_name = get_researcher_last_name(orcid)
         dois, no_doi, doi_to_title = get_doi_and_title(orcid) # uses ORCID API to get DOIs and titles of a given researcher's /works section
@@ -69,14 +71,18 @@ def handler(event, context):
         summary = []
         successes = 0
 
-        # Update job status to processing
-        jobs_repo.update_job_status(user_id, sk, "processing")
-
         MAX_WORKERS = 5  # conservative to respect API rate limits
 
         # Build a flat list of all papers: (doi_or_None, title, initial_reason)
         all_papers = [(doi, doi_to_title[doi], "unpaywall") for doi in dois] + \
                      [(None, title, "not_found") for title in no_doi]
+
+        def _extract_pmcid(url: str) -> str | None:
+            """Extract PMCID from any PMC web URL (handles both old/new formats, with or without PMC prefix)."""
+            match = re.search(r'(?:ncbi\.nlm\.nih\.gov/pmc|pmc\.ncbi\.nlm\.nih\.gov)/articles/(PMC)?(\d+)', url)
+            if match:
+                return f"PMC{match.group(2)}"
+            return None
 
         def process_paper(doi, title, initial_reason):
             failure_reason = initial_reason
@@ -85,9 +91,14 @@ def handler(event, context):
 
             # Step 1: Unpaywall (only for papers with a DOI)
             if doi:
-                response = requests.get(f'https://api.unpaywall.org/v2/{doi}?email={user_email}')
-                if not response.ok or not response.text.strip():
-                    logger.warning(f"Unpaywall returned {response.status_code} for DOI {doi}, skipping to OpenAlex")
+                try:
+                    response = requests.get(f'https://api.unpaywall.org/v2/{doi}?email={user_email}', timeout=15)
+                except requests.RequestException as e:
+                    logger.warning(f"Unpaywall request failed for DOI {doi}: {e}")
+                    response = None
+                if response is None or not response.ok or not response.text.strip():
+                    if response is not None:
+                        logger.warning(f"Unpaywall returned {response.status_code} for DOI {doi}, skipping to OpenAlex")
                     failure_reason = "not_found"
                 else:
                     doi_dict = response.json()
@@ -115,6 +126,12 @@ def handler(event, context):
                             for url in candidate_urls:
                                 attempted_url = url
                                 logger.info(f"Trying URL for {title}: {url}")
+                                # PMC web URLs are blocked from Lambda IPs — route to S3 OA bucket instead
+                                pmcid = _extract_pmcid(url)
+                                if pmcid and download_from_pmc_bucket(pmcid, orcid, title):
+                                    logger.info(f'Successfully downloaded {title} from PMC S3')
+                                    downloaded = True
+                                    break
                                 if download_to_bucket(orcid, title, url):
                                     logger.info(f'Successfully downloaded {title}')
                                     downloaded = True
@@ -129,7 +146,11 @@ def handler(event, context):
                 time.sleep(0.2)
                 if url:
                     attempted_url = url
-                    downloaded = download_to_bucket(orcid, title, url)
+                    pmcid = _extract_pmcid(url)
+                    if pmcid:
+                        downloaded = download_from_pmc_bucket(pmcid, orcid, title)
+                    if not downloaded:
+                        downloaded = download_to_bucket(orcid, title, url)
                     if not downloaded:
                         failure_reason = "download_error"
                 else:
@@ -164,7 +185,20 @@ def handler(event, context):
                 for doi, title, reason in all_papers
             }
             for future in as_completed(futures):
-                result = future.result()
+                try:
+                    result = future.result()
+                except Exception as e:
+                    title = futures[future]
+                    logger.warning(f"Unexpected error processing '{title}': {e}")
+                    summary.append({
+                        "orcid": orcid,
+                        "title": title,
+                        "doi": None,
+                        "status": "failure",
+                        "failure_reason": "download_error",
+                        "attempted_url": None,
+                    })
+                    continue
                 summary.append(result)
                 if result["status"] == "success":
                     successes += 1
@@ -175,18 +209,17 @@ def handler(event, context):
             jobs_repo.update_job_status(user_id, sk, "indexing")
             logger.info(f"Updated DynamoDB job status to indexing for job_id={job_id}, user_id={user_id}")
 
-        lambda_client = boto3.client('lambda')
-        lambda_client.invoke(
-            FunctionName=os.environ.get("INDEXER_FUNCTION_NAME"),
-            InvocationType="Event",  # Async
-            Payload=json.dumps({
+        sqs_client = boto3.client('sqs')
+        sqs_client.send_message(
+            QueueUrl=os.environ["INDEXING_JOBS_QUEUE_URL"],
+            MessageBody=json.dumps({
                 "orcid": orcid,
                 "user_id": user_id,
                 "sk": sk,
                 "answer": download_answer,
             }),
         )
-        logger.info(f"Triggered indexer for ORCID {orcid}")
+        logger.info(f"Queued indexing job for ORCID {orcid}")
 
     
         results_json = json.dumps(summary, indent=2)
@@ -242,66 +275,79 @@ def handler(event, context):
 
 def get_doi_and_title(orcid):
     dois = []
+    doi_to_title = {}
+    no_doi_titles = []
+    seen_titles = set()
+    seen_group_keys = set()  # all groups seen (any type) — drives early termination
 
-    # pulls ORCID works list — paginate to get all works (default page size is 100)
-    groups = []
-    page_size = 100
+    page_size = 200
     start = 0
+    total_summaries = None
+
     while True:
         response = requests.get(
             f"https://pub.orcid.org/v3.0/{orcid}/works",
             headers=api_headers,
             params={"page-size": page_size, "start": start},
+            timeout=30,
         )
         if not response.ok or not response.text.strip():
             raise ValueError(f"ORCID API returned {response.status_code} for {orcid}: {response.text[:200]}")
         data = response.json()
+        if total_summaries is None:
+            total_summaries = data.get("total", 0)
+
         page_groups = data.get("group", [])
-        groups.extend(page_groups)
-        if len(page_groups) < page_size:
-            break
-        start += page_size
+        new_this_page = 0
 
-    doi_to_title = {}
-    no_doi_titles = []
+        for group in page_groups:
+            summaries = group.get("work-summary", [])
+            if not summaries:
+                continue
+            first = summaries[0]
+            work_type = first.get("type", "").lower().replace("_", "-")
+            title = first["title"]["title"]["value"]
 
-    for group in groups:
-        summaries = group.get("work-summary", [])
-        if not summaries:
-            continue
-        # Use first summary for work type and title, but search all summaries for a DOI
-        first = summaries[0]
-        work_type = first.get("type", "").lower().replace("_", "-")
-        if work_type not in PAPER_WORK_TYPES:
-            logger.info(f"Skipping work of type '{work_type}': {first['title']['title']['value']}")
-            continue
-        title = first["title"]["title"]["value"]
-        doi = None
-        for summary in summaries:
-            ext_ids = summary.get("external-ids") or {}
-            for ext_id in (ext_ids.get("external-id") or []):
-                if ext_id["external-id-type"] == "doi":
-                    doi = ext_id["external-id-value"]
+            # Search all summaries in this group for a DOI
+            doi = None
+            for summary in summaries:
+                ext_ids = summary.get("external-ids") or {}
+                for ext_id in (ext_ids.get("external-id") or []):
+                    if ext_id["external-id-type"] == "doi":
+                        doi = ext_id["external-id-value"]
+                        break
+                if doi:
                     break
+
+            # Normalize DOI URL prefixes
             if doi:
-                break
+                for prefix in ("https://doi.org/", "http://doi.org/", "https://dx.doi.org/", "http://dx.doi.org/"):
+                    if doi.startswith(prefix):
+                        doi = doi[len(prefix):]
+                        break
 
-        if doi:
-            # Normalize: ORCID sometimes stores DOIs as full URLs
-            if doi.startswith("https://doi.org/"):
-                doi = doi[len("https://doi.org/"):]
-            elif doi.startswith("http://doi.org/"):
-                doi = doi[len("http://doi.org/"):]
-            elif doi.startswith("http://dx.doi.org/"):
-                doi = doi[len("http://dx.doi.org/"):]
-            elif doi.startswith("https://dx.doi.org/"):
-                doi = doi[len("https://dx.doi.org/"):]
-            dois.append(doi)
-            doi_to_title[doi] = title
-        else:
-            no_doi_titles.append(title)
+            group_key = doi if doi else title
+            if group_key in seen_group_keys:
+                continue  # duplicate group from a previous page, skip
+            seen_group_keys.add(group_key)
+            new_this_page += 1
 
-    print(f"Total works: {len(groups)} | With DOI: {len(dois)} | Without DOI: {len(no_doi_titles)}")
+            if work_type not in PAPER_WORK_TYPES:
+                logger.info(f"Skipping work of type '{work_type}': {title}")
+                continue
+
+            if doi:
+                dois.append(doi)
+                doi_to_title[doi] = title
+            elif title not in seen_titles:
+                seen_titles.add(title)
+                no_doi_titles.append(title)
+
+        start += page_size
+        if new_this_page == 0 or start >= total_summaries:
+            break
+
+    logger.info(f"ORCID pagination done | With DOI: {len(dois)} | Without DOI: {len(no_doi_titles)}")
     return (dois, no_doi_titles, doi_to_title)
 
 
@@ -529,11 +575,52 @@ def download_from_pmc_bucket(pmcid: str, orcid: str, title: str) -> bool:
     return False
 
 
+def resolve_pdf_url(url: str) -> str:
+    """
+    Convert known landing page URLs to direct PDF URLs.
+    Returns the original URL unchanged if no pattern matches.
+    """
+    # PMC: /pmc/articles/PMC{id}/ or /pmc/articles/{id} (no PMC prefix)
+    pmc_match = re.match(r'(https?://www\.ncbi\.nlm\.nih\.gov/pmc/articles/)(PMC)?(\d+)/?$', url)
+    if pmc_match:
+        pmcid = f"PMC{pmc_match.group(3)}"
+        return f"https://www.ncbi.nlm.nih.gov/pmc/articles/{pmcid}/pdf/"
+
+    # bioRxiv / medRxiv: append .full.pdf to the versioned content URL
+    if re.search(r'(biorxiv|medrxiv)\.org/content/', url) and not url.endswith('.pdf'):
+        base = url.split('?')[0].rstrip('/')
+        return base + '.full.pdf'
+
+    # arXiv: arxiv.org/abs/{id} → arxiv.org/pdf/{id}
+    if re.search(r'arxiv\.org/abs/', url):
+        return url.replace('/abs/', '/pdf/', 1)
+
+    # PeerJ: peerj.com/articles/{id} → peerj.com/articles/{id}.pdf
+    if re.search(r'peerj\.com/articles/', url) and not url.endswith('.pdf'):
+        return url.split('?')[0].rstrip('/') + '.pdf'
+
+    # PLOS: doi.org/10.1371/journal.{code}.{id} → direct PDF
+    plos_match = re.match(r'https?://(?:dx\.)?doi\.org/(10\.1371/journal\.(\w+)\.\d+)', url)
+    if plos_match:
+        full_doi = plos_match.group(1)
+        journal_code = plos_match.group(2)
+        journal_path_map = {
+            'pone': 'plosone', 'pbio': 'plosbiology', 'pmed': 'plosmedicine',
+            'pgen': 'plosgenetics', 'pcbi': 'ploscompbiol', 'ppat': 'plospathogens',
+            'pntd': 'plosntds', 'pwat': 'ploswater',
+        }
+        journal_path = journal_path_map.get(journal_code, f'plos{journal_code}')
+        return f"https://journals.plos.org/{journal_path}/article/file?id={full_doi}&type=printable"
+
+    return url
+
+
 def download_to_bucket(orcid, title, url) -> bool:
     """
     Download files directly from the OA URL to your bucket.
     Returns False on any HTTP error (403, 404, etc.) without raising.
     """
+    url = resolve_pdf_url(url)
     bucket = BUCKET_NAME
     safe_title = re.sub(r'[^\w\s\-]', '_', title).strip()
     key = f'fetched-papers/{orcid}/{safe_title}.pdf'

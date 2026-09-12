@@ -46,7 +46,7 @@ Senior faculty members face an enormous volume of writing tasks (grant applicati
 
 ### Knowledge Base Ingestion
 
-The platform supports two ingestion paths to build a faculty member's personal knowledge base. The primary path uses a researcher's ORCID: a fetcher Lambda queries the ORCID API to discover all papers the faculty member has authored, then attempts to retrieve available PDFs through several scientific literature APIs — Unpaywall (DOI-based), OpenAlex, and finally PubMed Central (NCBI eutils + PMC Open Access S3 dataset) — and an indexer Lambda embeds and stores them in S3 Vectors with ORCID metadata for per-researcher filtering. The secondary path allows manual PDF uploads for papers not available through these APIs (preprints, book chapters, etc.) which are ingested through Amazon Bedrock Knowledge Base.
+The platform supports two ingestion paths to build a faculty member's personal knowledge base. The primary path uses a researcher's ORCID: a fetcher Lambda queries the ORCID API to discover all papers the faculty member has authored, then attempts to retrieve available PDFs through several scientific literature APIs: Unpaywall (DOI-based), OpenAlex, and finally PubMed Central (NCBI eutils + PMC Open Access S3 dataset). Once fetched, an indexer Lambda embeds and stores the papers in S3 Vectors with ORCID metadata for per-researcher filtering. SQS queues decouple the fetcher from the indexer and enable parallel batch processing for large corpora. The secondary path allows manual PDF uploads for papers not available through these APIs (preprints, book chapters, etc.) which are ingested through Amazon Bedrock Knowledge Base.
 
 ### PaperQA-Powered RAG Pipeline
 
@@ -90,6 +90,7 @@ Best configuration achieved a 37.5% average score across all test cases. Setting
 | | [Amazon Bedrock](https://aws.amazon.com/bedrock/) | Claude LLMs for answer generation; Titan Embed v2 for embeddings; Knowledge Base for PDF ingestion |
 | | [Amazon S3](https://aws.amazon.com/s3/) | Storage for uploaded PDFs and fetched papers |
 | | [Amazon S3 Vectors](https://aws.amazon.com/s3/features/vectors/) | Vector index (cosine, 1024-dim) for semantic retrieval with per-researcher ORCID filtering |
+| | [Amazon SQS](https://aws.amazon.com/sqs/) | Decouples fetcher from indexer; two queues (indexing-jobs, indexing-batches) enable fan-out batch indexing for large corpora |
 | | [Amazon DynamoDB](https://aws.amazon.com/dynamodb/) | Stores sessions, chat history, and job records |
 | | [Amazon Cognito](https://aws.amazon.com/cognito/) | User authentication; admin-provisioned accounts with ID token auth |
 | | [AWS Amplify](https://aws.amazon.com/amplify/) | Hosts and deploys the React SPA |
@@ -297,6 +298,7 @@ bun dev
 | Amazon S3 Vectors Storage | <$1 | $0.06/GB |
 | Amazon S3 Vectors Requests | <$1 | $0.20/GB for PUT requests |
 | Amazon S3 Vectors Query | <$1 | $0.0025/1K requests |
+| Amazon SQS | ~$0 | Free tier: 1M requests/month |
 | Amazon Cognito | ~$0 | Free tier: 10,000 MAUs/month |
 | Amazon API Gateway | ~$0 | Free tier: 1M requests/month |
 | AWS Amplify Hosting | ~$0 | Free tier covers typical prototype traffic |
