@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 const tags = [
   'S3 Vectors',
   'Bedrock Knowledge Base',
+  'SQS Fan-out',
   'Async Job Pattern',
   'Cognito Auth',
   'Serverless',
