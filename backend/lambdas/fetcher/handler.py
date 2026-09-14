@@ -1,6 +1,7 @@
 import io
 import os
 import re
+import threading
 import unicodedata
 import boto3
 from botocore import UNSIGNED
@@ -38,6 +39,11 @@ s3_client = boto3.client('s3')
 secrets_manager= boto3.client("secretsmanager")
 secrets_client= SecretsClient(secrets_manager)
 
+# Fully serializes OpenAlex requests — only 1 call at a time across all worker threads.
+# Even Semaphore(2) still triggers 429s because two simultaneous requests from the same
+# AWS Lambda NAT IP hit OpenAlex's IP-level rate limit. Semaphore(1) prevents this entirely.
+_openalex_semaphore = threading.Semaphore(1)
+
 def handler(event, context):
     """Uses ORCID APIs to retrieve works from given ORCID and uses Unpaywall or OpenAlex to get downloadable PDFs of papers"""
 
@@ -73,6 +79,24 @@ def handler(event, context):
 
         MAX_WORKERS = 5  # conservative to respect API rate limits
 
+        # Load previous results to: (a) recover URLs for already-in-S3 papers, and
+        # (b) skip papers we already know are not OA or bot-blocked.
+        prev_urls: dict[str, str | None] = {}
+        prev_skip: dict[str, str] = {}  # title → failure_reason to carry forward
+        try:
+            prev_obj = s3_client.get_object(
+                Bucket=BUCKET_NAME,
+                Key=f'download-results/{user_id}/{orcid}.json',
+            )
+            prev_summary = json.loads(prev_obj["Body"].read())
+            for p in prev_summary:
+                prev_urls[p["title"]] = p.get("attempted_url")
+                if p.get("failure_reason") in ("not_open_access", "download_error"):
+                    prev_skip[p["title"]] = p["failure_reason"]
+            logger.info(f"Loaded previous results: {len(prev_skip)} papers to skip")
+        except s3_client.exceptions.ClientError:
+            pass  # No previous results — first fetch for this researcher
+
         # Build a flat list of all papers: (doi_or_None, title, initial_reason)
         all_papers = [(doi, doi_to_title[doi], "unpaywall") for doi in dois] + \
                      [(None, title, "not_found") for title in no_doi]
@@ -88,6 +112,36 @@ def handler(event, context):
             failure_reason = initial_reason
             downloaded = False
             attempted_url = None
+
+            # Skip papers previously confirmed not OA or bot-blocked (no point retrying)
+            if title in prev_skip:
+                logger.info(f"Skipping '{title}' — previously {prev_skip[title]}")
+                return {
+                    "orcid": orcid,
+                    "title": title,
+                    "doi": doi,
+                    "status": "failure",
+                    "failure_reason": prev_skip[title],
+                    "attempted_url": prev_urls.get(title),
+                }
+
+            # Skip if already downloaded (both .pdf and .txt variants)
+            safe_title = re.sub(r'[^\w\s\-]', '_', title).strip()
+            for ext in (".pdf", ".txt"):
+                key = f"fetched-papers/{orcid}/{safe_title}{ext}"
+                try:
+                    s3_client.head_object(Bucket=BUCKET_NAME, Key=key)
+                    logger.info(f"Already in S3, skipping download: {key}")
+                    return {
+                        "orcid": orcid,
+                        "title": title,
+                        "doi": doi,
+                        "status": "success",
+                        "failure_reason": None,
+                        "attempted_url": prev_urls.get(title),
+                    }
+                except s3_client.exceptions.ClientError:
+                    pass
 
             # Step 1: Unpaywall (only for papers with a DOI)
             if doi:
@@ -176,7 +230,7 @@ def handler(event, context):
                 "doi": doi,
                 "status": "success" if downloaded else "failure",
                 "failure_reason": None if downloaded else failure_reason,
-                "attempted_url": None if downloaded else attempted_url,
+                "attempted_url": attempted_url,
             }
 
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
@@ -394,71 +448,96 @@ def _get_oa_url_from_work(work: dict, title: str) -> str | None:
     return None
 
 
+def _titles_match(a: str, b: str, threshold: float = 0.8) -> bool:
+    """True if ≥80% of words overlap between the two normalized titles."""
+    words_a = set(normalize_title(a).split())
+    words_b = set(normalize_title(b).split())
+    if not words_a or not words_b:
+        return False
+    overlap = len(words_a & words_b) / max(len(words_a), len(words_b))
+    return overlap >= threshold
+
+
+def _openalex_get(url, params, title, context=""):
+    """
+    GET an OpenAlex endpoint with serialization + pre-request throttle.
+    Sleeps 0.5s before each call (~2 req/s) to stay under rate limit.
+    On 429, returns None immediately — caller falls through to PMC rather
+    than burning Lambda time on retries.
+    """
+    with _openalex_semaphore:
+        time.sleep(0.5)  # ~2 req/s max, well under OpenAlex free-tier limit
+        try:
+            resp = requests.get(url, params=params, timeout=10)
+        except Exception as e:
+            logger.warning(f"OpenAlex request failed for '{title}'{context}: {e}")
+            return None
+        if resp.status_code == 429:
+            logger.warning(f"OpenAlex rate limited (429), skipping to PMC{context}")
+            return None
+        return resp
+
+
 def search_by_title(title, orcid, api_key, doi=None):
     openalex_params = {"api_key": api_key} if api_key else {}
 
     # Strategy 1: DOI direct lookup — most reliable when we have a DOI
     if doi:
-        try:
-            resp = requests.get(
-                f"https://api.openalex.org/works/doi:{doi}",
-                params=openalex_params,
-                timeout=10,
-            )
-            if resp.ok and resp.text.strip():
-                work = resp.json()
-                url = _get_oa_url_from_work(work, title)
-                if url:
-                    return url
-                logger.info(f"OpenAlex DOI lookup found '{title}' but it is not OA")
-                return None
-        except Exception as e:
-            logger.warning(f"OpenAlex DOI lookup failed for {doi}: {e}")
+        resp = _openalex_get(
+            f"https://api.openalex.org/works/doi:{doi}",
+            openalex_params,
+            title,
+            context=f" (DOI {doi})",
+        )
+        if resp is not None and resp.ok and resp.text.strip():
+            work = resp.json()
+            url = _get_oa_url_from_work(work, title)
+            if url:
+                return url
+            logger.info(f"OpenAlex DOI lookup found '{title}' but it is not OA")
+            return None
 
     # Strategy 2: title + ORCID filter
     if not orcid.startswith("https://orcid.org/"):
         orcid_filter = f"https://orcid.org/{orcid}"
     else:
         orcid_filter = orcid
-    # Strip quotes from title to avoid breaking the filter syntax
-    safe_title = title.replace('"', '')
-    normalized_query = normalize_title(title)
+    # Strip special chars that can break title.search phrase syntax (e.g. "--", "&")
+    query_title = re.sub(r'[^\w\s]', ' ', title)
+    query_title = re.sub(r'\s+', ' ', query_title).strip()
 
     for filter_str in [
-        f'title.search:"{safe_title}",author.orcid:{orcid_filter}',
-        f'title.search:"{safe_title}"',  # Strategy 3: title-only fallback (ORCID may not be linked)
+        f'title.search:"{query_title}",author.orcid:{orcid_filter}',
+        f'title.search:"{query_title}"',  # Strategy 3: title-only fallback (ORCID may not be linked)
     ]:
-        try:
-            resp = requests.get(
-                "https://api.openalex.org/works",
-                params={"filter": filter_str, **openalex_params},
-                timeout=10,
-            )
-            if not resp.ok or not resp.text.strip():
+        resp = _openalex_get(
+            "https://api.openalex.org/works",
+            {"filter": filter_str, **openalex_params},
+            title,
+        )
+        if resp is None or not resp.ok or not resp.text.strip():
+            if resp is not None:
                 logger.warning(f"OpenAlex returned {resp.status_code} for filter '{filter_str}'")
-                continue
-            result_list = resp.json().get('results') or []
-            if not result_list:
-                continue
+            continue
+        result_list = resp.json().get('results') or []
+        if not result_list:
+            continue
 
-            # Verify a result matches our title before trusting it
-            match = None
-            for candidate in result_list:
-                if normalize_title(candidate.get('title') or '') == normalized_query:
-                    match = candidate
-                    break
-            if match is None:
-                continue
+        # Verify a result matches our title before trusting it
+        match = None
+        for candidate in result_list:
+            if _titles_match(candidate.get('title') or '', title):
+                match = candidate
+                break
+        if match is None:
+            continue
 
-            url = _get_oa_url_from_work(match, title)
-            if url:
-                return url
-            # Found the paper but it's not OA — stop searching, don't try title-only
-            logger.info(f"OpenAlex found '{title}' but it is not OA")
-            return None
-
-        except Exception as e:
-            logger.warning(f"OpenAlex search failed for '{title}': {e}")
+        url = _get_oa_url_from_work(match, title)
+        if url:
+            return url
+        # Found the paper but it's not OA — stop searching, don't try title-only
+        logger.info(f"OpenAlex found '{title}' but it is not OA")
+        return None
 
     logger.info(f"OpenAlex could not find '{title}'")
     return None
@@ -487,10 +566,13 @@ def search_pmc_by_title(title: str, api_key: str | None, author_last_name: str) 
     if api_key:
         base_params["api_key"] = api_key
 
+    # Sanitize title — special chars (e.g. "--") break NCBI query syntax
+    query_title = re.sub(r'[^\w\s]', ' ', title)
+    query_title = re.sub(r'\s+', ' ', query_title).strip()
     # Try exact quoted title first, then unquoted (broader) as fallback
     terms = [
-        f'"{title}"[Title] AND "{author_last_name}"[Author]',
-        f'{title}[Title] AND "{author_last_name}"[Author]',
+        f'"{query_title}"[Title] AND "{author_last_name}"[Author]',
+        f'{query_title}[Title] AND "{author_last_name}"[Author]',
     ]
     try:
         for term in terms:

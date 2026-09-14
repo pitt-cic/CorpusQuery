@@ -219,7 +219,7 @@ if [[ -z "$ZIP_UPLOAD_URL" || -z "$JOB_ID" || "$ZIP_UPLOAD_URL" == "None" || "$J
 fi
 
 echo "Uploading artifact to Amplify..." >&2
-curl -sSfL -X PUT \
+curl -sSfL --http1.1 -X PUT \
   -H "Content-Type: application/zip" \
   --upload-file "$ZIP_PATH" \
   "$ZIP_UPLOAD_URL" >/dev/null
